@@ -42,12 +42,13 @@ and fix any patch in `patches/` that no longer applies. Bump `HEPH_REVISION` for
 ## Hephaestus patches
 
 Linden Lab builds from [webrtc-sdk/webrtc](https://github.com/webrtc-sdk/webrtc) (LiveKit's fork of WebRTC), not from
-Google's WebRTC, and `llwebrtc` uses a small API that only the fork has. Shiguredo builds Google's WebRTC, so these
-patches bring that API across rather than changing `llwebrtc`, which keeps LL's and Firestorm's voice code mergeable.
+Google's WebRTC, and `llwebrtc` relies on a small API and one behaviour that only the fork has. Shiguredo builds Google's WebRTC, so these
+patches bring them across rather than changing `llwebrtc`, which keeps LL's and Firestorm's voice code mergeable.
 
 | Patch | What it does |
 |---|---|
 | `device_observer` | webrtc-sdk's device-change API, Windows parts (from its `m144_release` branch): `AudioDeviceObserver` (`OnDevicesUpdated()`), and `SetObserver()` / `GetPlayoutDevice()` / `GetRecordingDevice()` on `AudioDeviceModule`, `AudioDeviceGeneric` and `AudioDeviceModuleImpl`. `AudioDeviceWindowsCore` registers an `IMMNotificationClient` with the device enumerator and reports device state changes (headset plugged in or removed, device enabled or disabled), as webrtc-sdk does. Two hardenings: the observer pointer is atomic (Core Audio calls back on its own thread while the viewer can clear the observer on shutdown), and registration is skipped if the enumerator failed to create. As in webrtc-sdk, `GetPlayoutDevice()`/`GetRecordingDevice()` return -1 on Windows |
+| `audio_transport_while_active` | webrtc-sdk lets `AudioDeviceBuffer::RegisterAudioCallback()` replace the audio transport while media is active (with a warning); Google's WebRTC refuses. `llwebrtc` starts the microphone (for the level meter) before the voice engine registers its transport, so without this the first voice connection after login ran with no transport: a buzz in the headset (LL's timer-driven playout repeating stale audio) until voice was reset. The transport pointer is made atomic, since it is now swapped while the audio threads read it |
 
 The fork also keeps `AudioProcessing::Config::EchoCanceller::mobile_mode`, which Google removed along with the mobile
 echo canceller. `llwebrtc` only ever set it to `false` (the default), so those two lines were removed from `llwebrtc`
