@@ -10,10 +10,12 @@ Reads webrtc/VERSION (SHIGUREDO_TAG, HEPH_REVISION, TARGET), then:
   4. builds and packages with run.py;
   5. writes <tools>/artifacts/webrtc/webrtc-<tag>-heph<rev>-<target>.tar.xz plus a .sha256, with a
      heph-build.json inside recording the versions and patch hashes, and copies both to the backup
-     share when it is reachable.
+     share when it is reachable;
+  6. points the heph-webrtc vcpkg port (indra/vcpkg-overlays/ports/heph-webrtc) at the new archive.
 
-Usage: python scripts/heph-build-webrtc.py [--check] [--tools-dir DIR] [--backup-dir DIR | --no-backup]
+Usage: python scripts/heph-build-webrtc.py [--check | --port-only] [--tools-dir DIR] [--backup-dir DIR | --no-backup]
   --check       only report whether shiguredo has a newer version tag (exit code 1 if it does)
+  --port-only   only point the heph-webrtc port at the already-built archive
   --tools-dir   where the build tree and artifacts live (default: D:\\HephaestusTools, or $HEPH_TOOLS)
   --backup-dir  where artifacts are copied (default: the Second Life Viewer share's artifacts\\webrtc)
 
@@ -123,6 +125,28 @@ def remove_tree(path):
         shutil.rmtree(path, onexc=clear_readonly)
 
 
+def update_port(archive, version, target):
+    # Point the heph-webrtc vcpkg port at this archive: version-string in vcpkg.json, SHA-512 in portfile.cmake.
+    port = REPO / "indra" / "vcpkg-overlays" / "ports" / "heph-webrtc"
+    manifest = json.loads((port / "vcpkg.json").read_text())
+    manifest["version-string"] = version
+    (port / "vcpkg.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    portfile = port / "portfile.cmake"
+    text = portfile.read_text()
+    text = re.sub(r"set\(HEPH_WEBRTC_SHA512 [^)]*\)", f"set(HEPH_WEBRTC_SHA512 {sha512(archive)})", text)
+    text = re.sub(r"set\(HEPH_WEBRTC_TARGET [^)]*\)", f"set(HEPH_WEBRTC_TARGET {target})", text)
+    portfile.write_text(text)
+    print(f"updated {port.relative_to(REPO)} to {version}")
+
+
+def sha512(path):
+    h = hashlib.sha512()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -145,6 +169,15 @@ def main():
     patches = [WEBRTC_DIR / "patches" / name
                for name in (WEBRTC_DIR / "patches" / "series").read_text().split() if name]
     started = datetime.datetime.now()
+    out_dir = tools / "artifacts" / "webrtc"
+    name = f"webrtc-{tag}-heph{revision}-{target}"
+    archive = out_dir / f"{name}.tar.xz"
+
+    if "--port-only" in args:
+        if not archive.exists():
+            sys.exit(f"{archive} does not exist; build it first")
+        update_port(archive, f"{tag}-heph{revision}", target)
+        return 0
 
     tools.mkdir(parents=True, exist_ok=True)
     checkout_shiguredo(build_root, tag)
@@ -184,10 +217,7 @@ def main():
     }
     (package / "heph-build.json").write_text(json.dumps(info, indent=2) + "\n")
 
-    out_dir = tools / "artifacts" / "webrtc"
     out_dir.mkdir(parents=True, exist_ok=True)
-    name = f"webrtc-{tag}-heph{revision}-{target}"
-    archive = out_dir / f"{name}.tar.xz"
     print(f"+ writing {archive}", flush=True)
     with tarfile.open(archive, "w:xz", preset=6) as tar:
         tar.add(package, arcname=name)
@@ -202,6 +232,8 @@ def main():
             print(f"copied to {backup}")
         except OSError as e:
             print(f"warning: could not copy to the backup share ({e})")
+
+    update_port(archive, f"{tag}-heph{revision}", target)
 
     minutes = (datetime.datetime.now() - started).total_seconds() / 60
     print(f"{archive.name}: {archive.stat().st_size / 2**20:.0f} MiB, sha256 {digest}, {minutes:.0f} min")

@@ -39,6 +39,20 @@ and fix any patch in `patches/` that no longer applies. Bump `HEPH_REVISION` for
 | `windows_media_audio_category` | Uses the Media audio category in the `core_audio_utility_win` path, to avoid ducking | Applied as-is |
 | `windows_format_error_message` | Readable Core Audio error messages | Applied as-is |
 
+## Hephaestus patches
+
+Linden Lab builds from [webrtc-sdk/webrtc](https://github.com/webrtc-sdk/webrtc) (LiveKit's fork of WebRTC), not from
+Google's WebRTC, and `llwebrtc` uses a small API that only the fork has. Shiguredo builds Google's WebRTC, so these
+patches bring that API across rather than changing `llwebrtc`, which keeps LL's and Firestorm's voice code mergeable.
+
+| Patch | What it does |
+|---|---|
+| `device_observer` | webrtc-sdk's device-change API, Windows parts (from its `m144_release` branch): `AudioDeviceObserver` (`OnDevicesUpdated()`), and `SetObserver()` / `GetPlayoutDevice()` / `GetRecordingDevice()` on `AudioDeviceModule`, `AudioDeviceGeneric` and `AudioDeviceModuleImpl`. `AudioDeviceWindowsCore` registers an `IMMNotificationClient` with the device enumerator and reports device state changes (headset plugged in or removed, device enabled or disabled), as webrtc-sdk does. Two hardenings: the observer pointer is atomic (Core Audio calls back on its own thread while the viewer can clear the observer on shutdown), and registration is skipped if the enumerator failed to create. As in webrtc-sdk, `GetPlayoutDevice()`/`GetRecordingDevice()` return -1 on Windows |
+
+The fork also keeps `AudioProcessing::Config::EchoCanceller::mobile_mode`, which Google removed along with the mobile
+echo canceller. `llwebrtc` only ever set it to `false` (the default), so those two lines were removed from `llwebrtc`
+instead of patching the field back in.
+
 ## LL patches not carried over
 
 | Patch | Why |

@@ -5,3 +5,4 @@ crash_on_fatal_error.patch
 windows_add_192k.patch
 windows_media_audio_category.patch
 windows_format_error_message.patch
+device_observer.patch
