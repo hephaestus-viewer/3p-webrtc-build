@@ -3,11 +3,29 @@
 Hephaestus builds its own libwebrtc (Second Life voice) instead of using Linden Lab's prebuilt package.
 The plan and decisions are in `HEPHAESTUS_WEBRTC_PLAN.md` in the workspace.
 
-- **Base:** [shiguredo/webrtc-build](https://github.com/shiguredo/webrtc-build) at **m155.8059.2.0**, target
+- **Base:** [shiguredo/webrtc-build](https://github.com/shiguredo-webrtc-build/webrtc-build) at **m155.8059.2.0**, target
   `windows_x86_64`. Shiguredo's own patches are applied by its `run.py` as usual.
 - **On top:** Linden Lab's audio patches from [secondlife/3p-webrtc-build](https://github.com/secondlife/3p-webrtc-build),
   release **m144.7559.06.20** (commit `7c51890`), rebased onto m155. They are in `patches/`, applied in the order
   listed in `patches/series`.
+
+## Building
+
+```
+python scripts/heph-build-webrtc.py
+```
+
+It checks out shiguredo at the tag in `VERSION`, fetches the WebRTC source (first time only: about 20 GB, over an
+hour), applies `patches/` on a fresh `heph/build` branch, builds, packages, and writes
+`webrtc-<tag>-heph<revision>-<target>.tar.xz` plus a `.sha256` to `D:\HephaestusTools\artifacts\webrtc\`, copying both
+to the backup share. A `heph-build.json` inside the archive records the shiguredo tag, the WebRTC and Hephaestus
+commits, and each patch's SHA-256. `--check` only reports whether shiguredo has a newer release.
+
+Needs Visual Studio 2026 and the Windows SDK that Chromium's `build/vs_toolchain.py` names (10.0.28000.0 for m155),
+with Debugging Tools for Windows.
+
+**Updating to a newer shiguredo release:** set `SHIGUREDO_TAG` (and `HEPH_REVISION=1`) in `VERSION`, run the script,
+and fix any patch in `patches/` that no longer applies. Bump `HEPH_REVISION` for patch or setting changes on the same tag.
 
 ## The patches
 
@@ -27,7 +45,7 @@ The plan and decisions are in `HEPHAESTUS_WEBRTC_PLAN.md` in the workspace.
 |---|---|
 | `windows_add_deps`, `windows_silence_warnings` | Shiguredo's own patches of the same name; m155 has newer versions that do the same and more |
 | `fix_mocks` | Test-only mocks. `GetStats` is already in m155, and `SetAudioDeviceSink` is not part of m155's `AudioDeviceModule` (nor used by `llwebrtc`) |
-| `add_license_dav1d` | Only marks test-only libraries (catapult, googletest, …) as license-free for `generate_licenses.py`. Tests are off in our build. Re-check when the package (with `LICENSE.md`) is first generated |
+| `add_license_dav1d` | Only marks test-only libraries (catapult, googletest, …) as license-free for `generate_licenses.py`. Tests are off in our build, and the m155 package's `NOTICE` (25 libraries) generates without it |
 | macOS patches (`airpod_fixes`, `Revert-mac-…`, `apple_prefix`) | Windows only for now; revisit for the macOS port |
 | `jni_prefix`, `nacl_armv6_2`, `android_webrtc_version` | Android/NaCl only |
 

@@ -1,0 +1,6 @@
+# Read by scripts/heph-build-webrtc.py.
+# SHIGUREDO_TAG: the shiguredo/webrtc-build release our patches are rebased onto.
+# HEPH_REVISION: bump when patches/ or the build settings change without a new SHIGUREDO_TAG; reset to 1 on a new tag.
+SHIGUREDO_TAG=m155.8059.2.0
+HEPH_REVISION=1
+TARGET=windows_x86_64
