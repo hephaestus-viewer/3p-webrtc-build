@@ -1,0 +1,7 @@
+bug_8759_workaround.patch
+upsample-to-48khz-for-echo-cancellation-for-now.patch
+disable_mute_of_audio_processing.patch
+crash_on_fatal_error.patch
+windows_add_192k.patch
+windows_media_audio_category.patch
+windows_format_error_message.patch

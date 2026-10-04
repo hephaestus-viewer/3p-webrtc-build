@@ -1,0 +1,40 @@
+# WebRTC for Hephaestus
+
+Hephaestus builds its own libwebrtc (Second Life voice) instead of using Linden Lab's prebuilt package.
+The plan and decisions are in `HEPHAESTUS_WEBRTC_PLAN.md` in the workspace.
+
+- **Base:** [shiguredo/webrtc-build](https://github.com/shiguredo/webrtc-build) at **m155.8059.2.0**, target
+  `windows_x86_64`. Shiguredo's own patches are applied by its `run.py` as usual.
+- **On top:** Linden Lab's audio patches from [secondlife/3p-webrtc-build](https://github.com/secondlife/3p-webrtc-build),
+  release **m144.7559.06.20** (commit `7c51890`), rebased onto m155. They are in `patches/`, applied in the order
+  listed in `patches/series`.
+
+## The patches
+
+| Patch | What it does | Rebase onto m155 |
+|---|---|---|
+| `bug_8759_workaround` | Disables one echo-canceller debug check (webrtc bug 8759) that the 48 kHz upsampling below would trip. Release builds compile it out | Applied as-is |
+| `upsample-to-48khz-for-echo-cancellation-for-now` | Runs echo cancellation at 48 kHz | Applied as-is |
+| `disable_mute_of_audio_processing` | Keeps audio processing running while muted, because several voice channels share one processing module | Ported: m155's `MuteStream()` is simpler than the code LL patched; same effect (never signal "output will be muted") |
+| `crash_on_fatal_error` | Logs and then crashes on WebRTC fatal errors | Applied as-is |
+| `windows_add_192k` | Despite the name, LL's main Windows audio patch: adds 192 kHz to the probed rates; uses `WAVEFORMATEXTENSIBLE` and falls back to the device's closest format with WASAPI auto-conversion; stops Windows ducking other apps' audio (`IAudioClientDuckingControl`); marks voice as communications audio; drives playout from a timer instead of device events | Ported: 16 of 21 hunks applied; the other 5 hit declarations that m155 hoisted to the top of `InitPlayout()`/`InitRecording()`, and were redone there. The capture-side `IAudioClient2` code was given its own block, as LL already does on the render side, so the functions' `goto Exit` paths don't jump past its initialisation |
+| `windows_media_audio_category` | Uses the Media audio category in the `core_audio_utility_win` path, to avoid ducking | Applied as-is |
+| `windows_format_error_message` | Readable Core Audio error messages | Applied as-is |
+
+## LL patches not carried over
+
+| Patch | Why |
+|---|---|
+| `windows_add_deps`, `windows_silence_warnings` | Shiguredo's own patches of the same name; m155 has newer versions that do the same and more |
+| `fix_mocks` | Test-only mocks. `GetStats` is already in m155, and `SetAudioDeviceSink` is not part of m155's `AudioDeviceModule` (nor used by `llwebrtc`) |
+| `add_license_dav1d` | Only marks test-only libraries (catapult, googletest, …) as license-free for `generate_licenses.py`. Tests are off in our build. Re-check when the package (with `LICENSE.md`) is first generated |
+| macOS patches (`airpod_fixes`, `Revert-mac-…`, `apple_prefix`) | Windows only for now; revisit for the macOS port |
+| `jni_prefix`, `nacl_armv6_2`, `android_webrtc_version` | Android/NaCl only |
+
+LL's unmerged `roxie/fix-audio-dropout` branch (an experiment from February 2026) is not included.
+
+## Regenerating the patches
+
+The rebase lives on branch `heph/m155-ll-patches` in the webrtc source checkout
+(`D:\HephaestusTools\webrtc-build\_source\windows_x86_64\webrtc\src`), one commit per patch. Each file in `patches/` is
+`git diff` of one commit.
