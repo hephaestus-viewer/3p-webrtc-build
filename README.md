@@ -3,11 +3,11 @@
 Hephaestus builds its own libwebrtc (Second Life voice) instead of using Linden Lab's prebuilt package.
 The plan and decisions are in `HEPHAESTUS_WEBRTC_PLAN.md` in the workspace.
 
-- **Base:** [shiguredo/webrtc-build](https://github.com/shiguredo-webrtc-build/webrtc-build) at **m155.8059.2.0**, target
+- **Base:** [shiguredo/webrtc-build](https://github.com/shiguredo-webrtc-build/webrtc-build) at **m156.8078.3.2**, target
   `windows_x86_64`. Shiguredo's own patches are applied by its `run.py` as usual.
 - **On top:** Linden Lab's audio patches from [secondlife/3p-webrtc-build](https://github.com/secondlife/3p-webrtc-build),
-  release **m144.7559.06.20** (commit `7c51890`), rebased onto m155. They are in `patches/`, applied in the order
-  listed in `patches/series`.
+  release **m144.7559.06.20** (commit `7c51890`), rebased onto m155; all of them applied to m156 unchanged. They are in
+  `patches/`, applied in the order listed in `patches/series`.
 
 ## Building
 
@@ -21,8 +21,10 @@ hour), applies `patches/` on a fresh `heph/build` branch, builds, packages, and 
 to the backup share. A `heph-build.json` inside the archive records the shiguredo tag, the WebRTC and Hephaestus
 commits, and each patch's SHA-256. `--check` only reports whether shiguredo has a newer release.
 
-Needs Visual Studio 2026 and the Windows SDK that Chromium's `build/vs_toolchain.py` names (10.0.28000.0 for m155),
-with Debugging Tools for Windows.
+Needs Visual Studio 2026 with its **C++ Clang Compiler for Windows** component, and the Windows SDK that Chromium's
+`build/vs_toolchain.py` names, with Debugging Tools for Windows. Since m156, shiguredo's `run.py` merges WebRTC's Rust
+objects into `webrtc.lib` with that component's `llvm-ar` and `llvm-objcopy`; VS 2026 installs them under
+`VC\Tools\Llvm\x64\bin`, which the script puts on PATH for `run.py`.
 
 **Updating to a newer shiguredo release:** set `SHIGUREDO_TAG` (and `HEPH_REVISION=1`) in `VERSION`, run the script,
 and fix any patch in `patches/` that no longer applies. Bump `HEPH_REVISION` for patch or setting changes on the same tag.

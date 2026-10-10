@@ -19,8 +19,9 @@ Usage: python scripts/heph-build-webrtc.py [--check | --port-only] [--tools-dir 
   --tools-dir   where the build tree and artifacts live (default: D:\\HephaestusTools, or $HEPH_TOOLS)
   --backup-dir  where artifacts are copied (default: the Second Life Viewer share's artifacts\\webrtc)
 
-The build needs Visual Studio 2026 and the Windows SDK named in Chromium's build/vs_toolchain.py
-(10.0.28000.0 for m155), including Debugging Tools for Windows.
+The build needs Visual Studio 2026 with its "C++ Clang Compiler for Windows" component (llvm-ar and
+llvm-objcopy, since m156), and the Windows SDK named in Chromium's build/vs_toolchain.py, including
+Debugging Tools for Windows.
 """
 import datetime
 import hashlib
@@ -100,6 +101,16 @@ def runpy_env(build_root, target):
     reldir = depot_tools / "python3_bin_reldir.txt"
     if reldir.exists():
         env["PATH"] = str(depot_tools / reldir.read_text().strip()) + os.pathsep + env["PATH"]
+    # Since m156, run.py merges WebRTC's Rust objects into webrtc.lib with llvm-ar and llvm-objcopy from Visual
+    # Studio's "C++ Clang Compiler for Windows". It looks in VC\Tools\Llvm\bin, but VS 2026 puts them in
+    # VC\Tools\Llvm\x64\bin, so that goes on the end of PATH, where run.py looks next.
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if vswhere.exists():
+        install = subprocess.run([str(vswhere), "-latest", "-products", "*", "-property", "installationPath"],
+                                 capture_output=True, text=True).stdout.strip()
+        llvm_bin = Path(install) / "VC" / "Tools" / "Llvm" / "x64" / "bin"
+        if install and (llvm_bin / "llvm-ar.exe").exists():
+            env["PATH"] = env["PATH"] + os.pathsep + str(llvm_bin)
     return env
 
 
