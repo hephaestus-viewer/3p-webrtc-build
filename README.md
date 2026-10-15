@@ -22,7 +22,7 @@ It checks out shiguredo at the tag in `VERSION`, fetches the WebRTC source (firs
 hour), applies `patches/` on a fresh `heph/build` branch, builds, packages, and writes
 `webrtc-<tag>-heph<revision>-<platform>.tar.xz` plus a `.sha256` to `<tools>\artifacts\webrtc\` (and to
 `<backup>\webrtc\` when `--backup-dir` or `HEPH_BACKUP_DIR` names a backup folder). `<platform>` is Linden Lab's
-platform name (`windows64` for shiguredo's `windows_x86_64`); `<tools>` is `--tools-dir`, `HEPH_TOOLS`, or
+platform name (`windows64` for shiguredo's `windows_x86_64`); `<tools>` is `--tools-dir`, `HEPHAESTUS_TOOLS`, or
 `D:\HephaestusTools`. A `heph-build.json` inside the archive records the shiguredo tag, the WebRTC commit, this
 repository's commit, and each patch's SHA-256. `--check` only reports whether shiguredo has a newer release.
 

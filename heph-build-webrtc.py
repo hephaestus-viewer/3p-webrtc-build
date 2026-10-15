@@ -24,7 +24,7 @@ Usage: python heph-build-webrtc.py [--check | --port-only] [--viewer DIR] [--too
   --port-only   only point the heph-webrtc port at the already-built archive
   --viewer      the Hephaestus viewer checkout whose port is updated (default: $HEPH_VIEWER_DIR; the port
                 is left alone when neither is set)
-  --tools-dir   where the build tree and artifacts live (default: D:\\HephaestusTools, or $HEPH_TOOLS)
+  --tools-dir   where the build tree and artifacts live (default: D:\\HephaestusTools, or $HEPHAESTUS_TOOLS)
   --backup-dir  a folder whose webrtc subfolder gets a copy of the artifacts (default: $HEPH_BACKUP_DIR;
                 no copy when neither is set)
 
@@ -48,7 +48,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent
 SHIGUREDO_URL = "https://github.com/shiguredo-webrtc-build/webrtc-build.git"
 TAGS_API = "https://api.github.com/repos/shiguredo-webrtc-build/webrtc-build/git/matching-refs/tags/m"
-DEFAULT_TOOLS = Path(os.environ.get("HEPH_TOOLS", r"D:\HephaestusTools"))
+DEFAULT_TOOLS = Path(os.environ.get("HEPHAESTUS_TOOLS", r"D:\HephaestusTools"))
 DEFAULT_BACKUP = os.environ.get("HEPH_BACKUP_DIR")
 DEFAULT_VIEWER = os.environ.get("HEPH_VIEWER_DIR")
 RELEASES_URL = "https://github.com/hephaestus-viewer/3p-webrtc-build/releases"
