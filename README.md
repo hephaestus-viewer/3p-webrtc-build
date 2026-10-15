@@ -17,9 +17,15 @@ python scripts/heph-build-webrtc.py
 
 It checks out shiguredo at the tag in `VERSION`, fetches the WebRTC source (first time only: about 20 GB, over an
 hour), applies `patches/` on a fresh `heph/build` branch, builds, packages, and writes
-`webrtc-<tag>-heph<revision>-<target>.tar.xz` plus a `.sha256` to `D:\HephaestusTools\artifacts\webrtc\`, copying both
-to the backup share. A `heph-build.json` inside the archive records the shiguredo tag, the WebRTC and Hephaestus
-commits, and each patch's SHA-256. `--check` only reports whether shiguredo has a newer release.
+`webrtc-<tag>-heph<revision>-<target>.tar.xz` plus a `.sha256` to `D:\HephaestusTools\artifacts\webrtc\` (and to
+`<backup>\webrtc\` when `--backup-dir` or `HEPH_BACKUP_DIR` names a backup folder). A `heph-build.json` inside the
+archive records the shiguredo tag, the WebRTC and Hephaestus commits, and each patch's SHA-256. `--check` only reports
+whether shiguredo has a newer release.
+
+The `heph-webrtc` vcpkg port downloads the archive from the GitHub release `webrtc-<tag>-heph<revision>` of
+[hephaestus-viewer/hephaestus](https://github.com/hephaestus-viewer/hephaestus/releases), so **upload each new archive
+there** (the script prints the release name). Until it is uploaded, local builds still work: the script copies the
+archive into vcpkg's `downloads` folder, where vcpkg finds it by its SHA-512.
 
 Needs Visual Studio 2026 with its **C++ Clang Compiler for Windows** component, and the Windows SDK that Chromium's
 `build/vs_toolchain.py` names, with Debugging Tools for Windows. Since m156, shiguredo's `run.py` merges WebRTC's Rust

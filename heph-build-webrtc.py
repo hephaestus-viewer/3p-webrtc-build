@@ -9,15 +9,18 @@ Reads webrtc/VERSION (SHIGUREDO_TAG, HEPH_REVISION, TARGET), then:
      heph/build, starting from the last "[shiguredo-patch]" commit;
   4. builds and packages with run.py;
   5. writes <tools>/artifacts/webrtc/webrtc-<tag>-heph<rev>-<target>.tar.xz plus a .sha256, with a
-     heph-build.json inside recording the versions and patch hashes, and copies both to the backup
-     share when it is reachable;
-  6. points the heph-webrtc vcpkg port (indra/vcpkg-overlays/ports/heph-webrtc) at the new archive.
+     heph-build.json inside recording the versions and patch hashes, and copies both to
+     <backup>/webrtc when a backup folder is given;
+  6. points the heph-webrtc vcpkg port (indra/vcpkg-overlays/ports/heph-webrtc) at the new archive and
+     copies the archive into vcpkg's downloads folder, so local builds find it before it is uploaded;
+  7. prints the GitHub release the archive must be uploaded to (the port's download URL).
 
 Usage: python scripts/heph-build-webrtc.py [--check | --port-only] [--tools-dir DIR] [--backup-dir DIR | --no-backup]
   --check       only report whether shiguredo has a newer version tag (exit code 1 if it does)
   --port-only   only point the heph-webrtc port at the already-built archive
   --tools-dir   where the build tree and artifacts live (default: D:\\HephaestusTools, or $HEPH_TOOLS)
-  --backup-dir  where artifacts are copied (default: the Second Life Viewer share's artifacts\\webrtc)
+  --backup-dir  a folder whose webrtc subfolder gets a copy of the artifacts (default: $HEPH_BACKUP_DIR;
+                no copy when neither is set)
 
 The build needs Visual Studio 2026 with its "C++ Clang Compiler for Windows" component (llvm-ar and
 llvm-objcopy, since m156), and the Windows SDK named in Chromium's build/vs_toolchain.py, including
@@ -41,8 +44,9 @@ WEBRTC_DIR = REPO / "webrtc"
 SHIGUREDO_URL = "https://github.com/shiguredo-webrtc-build/webrtc-build.git"
 TAGS_API = "https://api.github.com/repos/shiguredo-webrtc-build/webrtc-build/git/matching-refs/tags/m"
 DEFAULT_TOOLS = Path(os.environ.get("HEPH_TOOLS", r"D:\HephaestusTools"))
-DEFAULT_BACKUP = Path(r"\\unraid\data\CLAUDE\Second Life Viewer\artifacts\webrtc")
-COMMITTER = ["-c", "user.name=Vulcan", "-c", "user.email=vulcan@noreply.invalid"]
+DEFAULT_BACKUP = os.environ.get("HEPH_BACKUP_DIR")
+RELEASES_URL = "https://github.com/hephaestus-viewer/hephaestus/releases"
+COMMITTER = ["-c", "user.name=Vulcan", "-c", "user.email=340877607+vulcan-hephaestus@users.noreply.github.com"]
 
 
 def read_version():
@@ -149,6 +153,15 @@ def update_port(archive, version, target):
     portfile.write_text(text)
     print(f"updated {port.relative_to(REPO)} to {version}")
 
+    # vcpkg takes a download whose SHA-512 matches from its downloads folder instead of fetching the URL.
+    downloads = Path(os.environ.get("VCPKG_ROOT", DEFAULT_TOOLS / "vcpkg")) / "downloads"
+    if downloads.is_dir():
+        shutil.copy2(archive, downloads / archive.name)
+        print(f"copied to {downloads}")
+    else:
+        print(f"warning: no vcpkg downloads folder at {downloads}; local builds will try the release URL")
+    print(f"upload {archive.name} to the GitHub release webrtc-{version} ({RELEASES_URL})")
+
 
 def sha512(path):
     h = hashlib.sha512()
@@ -174,8 +187,8 @@ def main():
         return check_latest(tag)
 
     tools = Path(args[args.index("--tools-dir") + 1]) if "--tools-dir" in args else DEFAULT_TOOLS
-    backup = None if "--no-backup" in args else (
-        Path(args[args.index("--backup-dir") + 1]) if "--backup-dir" in args else DEFAULT_BACKUP)
+    backup_root = args[args.index("--backup-dir") + 1] if "--backup-dir" in args else DEFAULT_BACKUP
+    backup = None if "--no-backup" in args or not backup_root else Path(backup_root) / "webrtc"
     build_root = tools / "webrtc-build"
     patches = [WEBRTC_DIR / "patches" / name
                for name in (WEBRTC_DIR / "patches" / "series").read_text().split() if name]
@@ -242,7 +255,7 @@ def main():
                 shutil.copy2(f, backup / f.name)
             print(f"copied to {backup}")
         except OSError as e:
-            print(f"warning: could not copy to the backup share ({e})")
+            print(f"warning: could not copy to the backup folder ({e})")
 
     update_port(archive, f"{tag}-heph{revision}", target)
 
