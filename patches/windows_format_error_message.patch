@@ -1,0 +1,29 @@
+diff --git a/modules/audio_device/win/audio_device_core_win.cc b/modules/audio_device/win/audio_device_core_win.cc
+index 8893877..8aeb24b 100644
+--- a/modules/audio_device/win/audio_device_core_win.cc
++++ b/modules/audio_device/win/audio_device_core_win.cc
+@@ -4252,7 +4252,7 @@ Exit:
+ 
+ void AudioDeviceWindowsCore::_TraceCOMError(HRESULT hr) const {
+   wchar_t buf[MAXERRORLENGTH];
+-  wchar_t errorText[MAXERRORLENGTH];
++  wchar_t errorText[MAXERRORLENGTH] = {};
+ 
+   const DWORD dwFlags =
+       FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+@@ -4263,6 +4263,15 @@ void AudioDeviceWindowsCore::_TraceCOMError(HRESULT hr) const {
+   DWORD messageLength = ::FormatMessageW(dwFlags, 0, hr, dwLangID, errorText,
+                                          MAXERRORLENGTH, NULL);
+ 
++  if (messageLength == 0) {
++    // `hr` has no system message text (e.g. AUDCLNT_E_DEVICE_INVALIDATED).
++    // FormatMessageW() left `errorText` untouched, so it must not be read here.
++    RTC_LOG(LS_ERROR) << "Core Audio method failed (hr=0x" << ToHex(hr)
++                       << "), FormatMessageW() failed with GetLastError()="
++                       << ::GetLastError();
++    return;
++  }
++
+   RTC_DCHECK_LE(messageLength, MAXERRORLENGTH);
+ 
+   // Trims tailing white space (FormatMessage() leaves a trailing cr-lf.).

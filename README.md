@@ -1,7 +1,10 @@
 # WebRTC for Hephaestus
 
-Hephaestus builds its own libwebrtc (Second Life voice) instead of using Linden Lab's prebuilt package.
-The plan and decisions are in `HEPHAESTUS_WEBRTC_PLAN.md` in the workspace.
+The [Hephaestus viewer](https://github.com/hephaestus-viewer/hephaestus) builds its own libwebrtc (Second Life voice)
+instead of using Linden Lab's prebuilt package. This repository holds what that build needs: the pinned versions
+(`VERSION`), the patches (`patches/`) and the build script (`heph-build-webrtc.py`). The packages are published as this
+repository's releases, which the viewer's `heph-webrtc` vcpkg port downloads. The name and the release layout follow
+Linden Lab's [3p-webrtc-build](https://github.com/secondlife/3p-webrtc-build); the build itself does not use autobuild.
 
 - **Base:** [shiguredo/webrtc-build](https://github.com/shiguredo-webrtc-build/webrtc-build) at **m156.8078.3.2**, target
   `windows_x86_64`. Shiguredo's own patches are applied by its `run.py` as usual.
@@ -12,20 +15,24 @@ The plan and decisions are in `HEPHAESTUS_WEBRTC_PLAN.md` in the workspace.
 ## Building
 
 ```
-python scripts/heph-build-webrtc.py
+python heph-build-webrtc.py --viewer <Hephaestus viewer checkout>
 ```
 
 It checks out shiguredo at the tag in `VERSION`, fetches the WebRTC source (first time only: about 20 GB, over an
 hour), applies `patches/` on a fresh `heph/build` branch, builds, packages, and writes
-`webrtc-<tag>-heph<revision>-<target>.tar.xz` plus a `.sha256` to `D:\HephaestusTools\artifacts\webrtc\` (and to
-`<backup>\webrtc\` when `--backup-dir` or `HEPH_BACKUP_DIR` names a backup folder). A `heph-build.json` inside the
-archive records the shiguredo tag, the WebRTC and Hephaestus commits, and each patch's SHA-256. `--check` only reports
-whether shiguredo has a newer release.
+`webrtc-<tag>-heph<revision>-<platform>.tar.xz` plus a `.sha256` to `<tools>\artifacts\webrtc\` (and to
+`<backup>\webrtc\` when `--backup-dir` or `HEPH_BACKUP_DIR` names a backup folder). `<platform>` is Linden Lab's
+platform name (`windows64` for shiguredo's `windows_x86_64`); `<tools>` is `--tools-dir`, `HEPH_TOOLS`, or
+`D:\HephaestusTools`. A `heph-build.json` inside the archive records the shiguredo tag, the WebRTC commit, this
+repository's commit, and each patch's SHA-256. `--check` only reports whether shiguredo has a newer release.
 
-The `heph-webrtc` vcpkg port downloads the archive from the GitHub release `webrtc-<tag>-heph<revision>` of
-[hephaestus-viewer/hephaestus](https://github.com/hephaestus-viewer/hephaestus/releases), so **upload each new archive
-there** (the script prints the release name). Until it is uploaded, local builds still work: the script copies the
-archive into vcpkg's `downloads` folder, where vcpkg finds it by its SHA-512.
+With `--viewer` (or `HEPH_VIEWER_DIR`), the script then points the viewer checkout's `heph-webrtc` port at the new
+archive (version, SHA-512, platform); commit that change in the viewer.
+
+The port downloads the archive from this repository's release `<tag>-heph<revision>` (for example
+`m156.8078.3.2-heph1`), so **upload each new archive there** (the script prints the release name). Until it is
+uploaded, local builds still work: the script copies the archive into vcpkg's `downloads` folder, where vcpkg finds it
+by its SHA-512.
 
 Needs Visual Studio 2026 with its **C++ Clang Compiler for Windows** component, and the Windows SDK that Chromium's
 `build/vs_toolchain.py` names, with Debugging Tools for Windows. Since m156, shiguredo's `run.py` merges WebRTC's Rust
@@ -77,5 +84,5 @@ LL's unmerged `roxie/fix-audio-dropout` branch (an experiment from February 2026
 ## Regenerating the patches
 
 The rebase lives on branch `heph/m155-ll-patches` in the webrtc source checkout
-(`D:\HephaestusTools\webrtc-build\_source\windows_x86_64\webrtc\src`), one commit per patch. Each file in `patches/` is
+(`<tools>\webrtc-build\_source\windows_x86_64\webrtc\src`), one commit per patch. Each file in `patches/` is
 `git diff` of one commit.

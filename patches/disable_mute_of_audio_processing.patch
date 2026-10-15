@@ -1,0 +1,26 @@
+diff --git a/media/engine/webrtc_voice_engine.cc b/media/engine/webrtc_voice_engine.cc
+index 6e2ce97..b511353 100644
+--- a/media/engine/webrtc_voice_engine.cc
++++ b/media/engine/webrtc_voice_engine.cc
+@@ -1813,6 +1813,21 @@ bool WebRtcVoiceSendChannel::MuteStream(uint32_t ssrc, bool muted) {
+   for (const auto& kv : send_streams_) {
+     all_muted = all_muted && kv.second->muted();
+   }
++
++  // Because multiple WebRTCVoiceMediaChannels can be
++  // associated with a single AudioProcessing module,
++  // muting when all streams of this media channel
++  // are muted is incorrect, because streams on other
++  // channels may not be muted.  So, for now,
++  // we'll simply not disable audio processing when
++  // streams are muted.
++  //
++  // TODO(roxanneskelly)
++  // Track which WebRTCVoiceMediaChannels are all_muted
++  // and only call set_output_will_be_muted when all of them
++  // are muted.
++  all_muted = false;
++
+   AudioProcessing* ap = engine()->apm();
+   if (ap) {
+     ap->set_output_will_be_muted(all_muted);

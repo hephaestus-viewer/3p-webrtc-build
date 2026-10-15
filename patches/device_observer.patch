@@ -1,0 +1,285 @@
+diff --git a/api/audio/audio_device.h b/api/audio/audio_device.h
+index 3091389..4c39678 100644
+--- a/api/audio/audio_device.h
++++ b/api/audio/audio_device.h
+@@ -20,6 +20,7 @@
+ namespace webrtc {
+ 
+ class AudioDeviceModuleForTest;
++class AudioDeviceObserver;
+ 
+ class AudioDeviceModule : public RefCountInterface {
+  public:
+@@ -168,6 +169,13 @@ class AudioDeviceModule : public RefCountInterface {
+   // not be present in the stats.
+   virtual std::optional<Stats> GetStats() const { return std::nullopt; }
+ 
++  // Device-change notifications and the active device indices, from
++  // webrtc-sdk/webrtc (used by Second Life's llwebrtc). Only the Windows Core
++  // Audio backend reports device changes; the others return -1.
++  virtual int32_t SetObserver(AudioDeviceObserver* observer) { return -1; }
++  virtual int32_t GetPlayoutDevice() const { return -1; }
++  virtual int32_t GetRecordingDevice() const { return -1; }
++
+ // Only supported on iOS.
+ #if defined(WEBRTC_IOS)
+   virtual int GetPlayoutAudioParameters(AudioParameters* params) const = 0;
+@@ -192,6 +200,16 @@ class AudioDeviceModuleForTest : public AudioDeviceModule {
+   virtual int SetRecordingSampleRate(uint32_t sample_rate) = 0;
+ };
+ 
++// Receives AudioDeviceModule::SetObserver() notifications (webrtc-sdk/webrtc).
++class AudioDeviceObserver {
++ public:
++  virtual ~AudioDeviceObserver() = default;
++
++  // Input/output devices changed. Called on the audio backend's own
++  // notification thread.
++  virtual void OnDevicesUpdated() {}
++};
++
+ }  // namespace webrtc
+ 
+ #endif  // API_AUDIO_AUDIO_DEVICE_H_
+diff --git a/modules/audio_device/audio_device_generic.h b/modules/audio_device/audio_device_generic.h
+index c74a6c9..10de7cb 100644
+--- a/modules/audio_device/audio_device_generic.h
++++ b/modules/audio_device/audio_device_generic.h
+@@ -128,6 +128,11 @@ class AudioDeviceGeneric {
+   // Play underrun count.
+   virtual int32_t GetPlayoutUnderrunCount() const;
+ 
++  // Device-change notifications and active devices (webrtc-sdk/webrtc).
++  virtual int32_t SetObserver(AudioDeviceObserver* /* observer */) { return -1; }
++  virtual int32_t GetPlayoutDevice() const { return -1; }
++  virtual int32_t GetRecordingDevice() const { return -1; }
++
+ // iOS only.
+ // TODO(henrika): add Android support.
+ #if defined(WEBRTC_IOS)
+diff --git a/modules/audio_device/audio_device_impl.cc b/modules/audio_device/audio_device_impl.cc
+index 4b93bb5..5d7a829 100644
+--- a/modules/audio_device/audio_device_impl.cc
++++ b/modules/audio_device/audio_device_impl.cc
+@@ -871,6 +871,27 @@ int32_t AudioDeviceModuleImpl::GetPlayoutUnderrunCount() const {
+   return underrunCount;
+ }
+ 
++int32_t AudioDeviceModuleImpl::SetObserver(AudioDeviceObserver* observer) {
++  RTC_LOG(LS_INFO) << __FUNCTION__ << "(" << observer << ")";
++  int32_t ok = audio_device_->SetObserver(observer);
++  RTC_LOG(LS_INFO) << "output: " << ok;
++  return ok;
++}
++
++int32_t AudioDeviceModuleImpl::GetPlayoutDevice() const {
++  RTC_LOG(LS_INFO) << __FUNCTION__;
++  int32_t r = audio_device_->GetPlayoutDevice();
++  RTC_LOG(LS_INFO) << "output: " << r;
++  return r;
++}
++
++int32_t AudioDeviceModuleImpl::GetRecordingDevice() const {
++  RTC_LOG(LS_INFO) << __FUNCTION__;
++  int32_t r = audio_device_->GetRecordingDevice();
++  RTC_LOG(LS_INFO) << "output: " << r;
++  return r;
++}
++
+ #if defined(WEBRTC_IOS)
+ int AudioDeviceModuleImpl::GetPlayoutAudioParameters(
+     AudioParameters* params) const {
+diff --git a/modules/audio_device/audio_device_impl.h b/modules/audio_device/audio_device_impl.h
+index e287c6f..a41530a 100644
+--- a/modules/audio_device/audio_device_impl.h
++++ b/modules/audio_device/audio_device_impl.h
+@@ -155,6 +155,11 @@ class AudioDeviceModuleImpl : public AudioDeviceModuleForTest {
+   // Play underrun count.
+   int32_t GetPlayoutUnderrunCount() const override;
+ 
++  // Device-change notifications and active devices (webrtc-sdk/webrtc).
++  int32_t SetObserver(AudioDeviceObserver* observer) override;
++  int32_t GetPlayoutDevice() const override;
++  int32_t GetRecordingDevice() const override;
++
+ #if defined(WEBRTC_IOS)
+   int GetPlayoutAudioParameters(AudioParameters* params) const override;
+   int GetRecordAudioParameters(AudioParameters* params) const override;
+diff --git a/modules/audio_device/win/audio_device_core_win.cc b/modules/audio_device/win/audio_device_core_win.cc
+index 8aeb24b..45e820c 100644
+--- a/modules/audio_device/win/audio_device_core_win.cc
++++ b/modules/audio_device/win/audio_device_core_win.cc
+@@ -497,6 +497,12 @@ AudioDeviceWindowsCore::AudioDeviceWindowsCore()
+                    reinterpret_cast<void**>(&_ptrEnumerator));
+   RTC_DCHECK(_ptrEnumerator);
+ 
++  // Device-change notifications (webrtc-sdk/webrtc).
++  _deviceStateListener = new DeviceStateListener();
++  if (_ptrEnumerator) {
++    _ptrEnumerator->RegisterEndpointNotificationCallback(_deviceStateListener);
++  }
++
+   // DMO initialization for built-in WASAPI AEC.
+   {
+     IMediaObject* ptrDMO = NULL;
+@@ -522,6 +528,12 @@ AudioDeviceWindowsCore::~AudioDeviceWindowsCore() {
+ 
+   Terminate();
+ 
++  if (_ptrEnumerator && _deviceStateListener) {
++    _ptrEnumerator->UnregisterEndpointNotificationCallback(_deviceStateListener);
++  }
++  delete _deviceStateListener;
++  _deviceStateListener = nullptr;
++
+   // The IMMDeviceEnumerator is created during construction. Must release
+   // it here and not in Terminate() since we don't recreate it in Init().
+   SAFE_RELEASE(_ptrEnumerator);
+@@ -4011,6 +4023,81 @@ int32_t AudioDeviceWindowsCore::_GetDeviceID(IMMDevice* pDevice,
+   return 0;
+ }
+ 
++// ----------------------------------------------------------------------------
++//  Device-change notifications (webrtc-sdk/webrtc)
++// ----------------------------------------------------------------------------
++
++int32_t AudioDeviceWindowsCore::SetObserver(AudioDeviceObserver* observer) {
++  _deviceStateListener->SetObserver(observer);
++  return 0;
++}
++
++void AudioDeviceWindowsCore::DeviceStateListener::SetObserver(
++    AudioDeviceObserver* observer) {
++  observer_.store(observer);
++}
++
++// As in webrtc-sdk, a device's state change (plugged in, unplugged, enabled,
++// disabled) is what gets reported; the other notifications are only logged.
++HRESULT AudioDeviceWindowsCore::DeviceStateListener::OnDeviceStateChanged(
++    LPCWSTR /* pwstrDeviceId */,
++    DWORD dwNewState) {
++  RTC_DLOG(LS_INFO) << "Core Audio device state changed to " << dwNewState;
++  if (AudioDeviceObserver* observer = observer_.load()) {
++    observer->OnDevicesUpdated();
++  }
++  return S_OK;
++}
++
++HRESULT AudioDeviceWindowsCore::DeviceStateListener::OnDeviceAdded(
++    LPCWSTR /* pwstrDeviceId */) {
++  RTC_DLOG(LS_INFO) << "Core Audio device added";
++  return S_OK;
++}
++
++HRESULT AudioDeviceWindowsCore::DeviceStateListener::OnDeviceRemoved(
++    LPCWSTR /* pwstrDeviceId */) {
++  RTC_DLOG(LS_INFO) << "Core Audio device removed";
++  return S_OK;
++}
++
++HRESULT AudioDeviceWindowsCore::DeviceStateListener::OnDefaultDeviceChanged(
++    EDataFlow /* flow */,
++    ERole /* role */,
++    LPCWSTR /* pwstrDefaultDeviceId */) {
++  RTC_DLOG(LS_INFO) << "Core Audio default device changed";
++  return S_OK;
++}
++
++HRESULT AudioDeviceWindowsCore::DeviceStateListener::OnPropertyValueChanged(
++    LPCWSTR /* pwstrDeviceId */,
++    const PROPERTYKEY /* key */) {
++  return S_OK;
++}
++
++ULONG AudioDeviceWindowsCore::DeviceStateListener::AddRef() {
++  return InterlockedIncrement(&ref_count_);
++}
++
++ULONG AudioDeviceWindowsCore::DeviceStateListener::Release() {
++  // Owned by AudioDeviceWindowsCore, which deletes it after unregistering.
++  return InterlockedDecrement(&ref_count_);
++}
++
++HRESULT AudioDeviceWindowsCore::DeviceStateListener::QueryInterface(
++    REFIID iid,
++    void** object) {
++  if (object == nullptr) {
++    return E_POINTER;
++  }
++  if (iid == IID_IUnknown || iid == __uuidof(IMMNotificationClient)) {
++    *object = static_cast<IMMNotificationClient*>(this);
++    return S_OK;
++  }
++  *object = nullptr;
++  return E_NOINTERFACE;
++}
++
+ // ----------------------------------------------------------------------------
+ //  _GetDefaultDevice
+ // ----------------------------------------------------------------------------
+diff --git a/modules/audio_device/win/audio_device_core_win.h b/modules/audio_device/win/audio_device_core_win.h
+index 578a1f6..9c66e98 100644
+--- a/modules/audio_device/win/audio_device_core_win.h
++++ b/modules/audio_device/win/audio_device_core_win.h
+@@ -21,6 +21,8 @@
+ #include <mediaobj.h>     // IMediaObject
+ #include <mmdeviceapi.h>  // MMDevice
+ 
++#include <atomic>
++
+ #include "api/scoped_refptr.h"
+ #include "modules/audio_device/audio_device_generic.h"
+ #include "rtc_base/synchronization/mutex.h"
+@@ -48,6 +50,35 @@ class AudioDeviceWindowsCore : public AudioDeviceGeneric {
+   AudioDeviceWindowsCore();
+   ~AudioDeviceWindowsCore();
+ 
++  // Forwards Core Audio endpoint notifications to an AudioDeviceObserver
++  // (webrtc-sdk/webrtc's device-change API). Registered with the device
++  // enumerator for the lifetime of this object.
++  class DeviceStateListener : public IMMNotificationClient {
++   public:
++    virtual ~DeviceStateListener() = default;
++    HRESULT __stdcall OnDeviceStateChanged(LPCWSTR pwstrDeviceId,
++                                           DWORD dwNewState) override;
++    HRESULT __stdcall OnDeviceAdded(LPCWSTR pwstrDeviceId) override;
++    HRESULT __stdcall OnDeviceRemoved(LPCWSTR pwstrDeviceId) override;
++    HRESULT __stdcall OnDefaultDeviceChanged(
++        EDataFlow flow,
++        ERole role,
++        LPCWSTR pwstrDefaultDeviceId) override;
++    HRESULT __stdcall OnPropertyValueChanged(LPCWSTR pwstrDeviceId,
++                                             const PROPERTYKEY key) override;
++    // IUnknown (required by IMMNotificationClient).
++    ULONG __stdcall AddRef() override;
++    ULONG __stdcall Release() override;
++    HRESULT __stdcall QueryInterface(REFIID iid, void** object) override;
++
++    void SetObserver(AudioDeviceObserver* observer);
++
++   private:
++    LONG ref_count_ = 1;
++    // Set from the client's thread, read on Core Audio's notification thread.
++    std::atomic<AudioDeviceObserver*> observer_{nullptr};
++  };
++
+   static bool CoreAudioIsSupported();
+ 
+   // Retrieve the currently utilized audio layer
+@@ -148,6 +179,8 @@ class AudioDeviceWindowsCore : public AudioDeviceGeneric {
+ 
+   virtual int32_t EnableBuiltInAEC(bool enable);
+ 
++  virtual int32_t SetObserver(AudioDeviceObserver* observer);
++
+  public:
+   virtual void AttachAudioBuffer(AudioDeviceBuffer* audioBuffer);
+ 
+@@ -223,6 +256,7 @@ class AudioDeviceWindowsCore : public AudioDeviceGeneric {
+   mutable Mutex volume_mutex_ RTC_ACQUIRED_AFTER(mutex_);
+ 
+   IMMDeviceEnumerator* _ptrEnumerator;
++  DeviceStateListener* _deviceStateListener = nullptr;
+   IMMDeviceCollection* _ptrRenderCollection;
+   IMMDeviceCollection* _ptrCaptureCollection;
+   IMMDevice* _ptrDeviceOut;

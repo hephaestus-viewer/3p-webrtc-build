@@ -1,0 +1,25 @@
+diff --git a/audio/audio_transport_impl.cc b/audio/audio_transport_impl.cc
+index cd83fd9..6e683c3 100644
+--- a/audio/audio_transport_impl.cc
++++ b/audio/audio_transport_impl.cc
+@@ -45,7 +45,10 @@ void InitializeCaptureFrame(int input_sample_rate,
+                             size_t send_num_channels,
+                             AudioFrame* audio_frame) {
+   RTC_DCHECK(audio_frame);
+-  int min_processing_rate_hz = std::min(input_sample_rate, send_sample_rate_hz);
++  //int min_processing_rate_hz = send_sample_rate_hzstd::min(input_sample_rate, send_sample_rate_hz);
++  // Second Life uses 48khz for spatial audio, so upsample to that for now.
++  // (roxanneskelly)
++  int min_processing_rate_hz = send_sample_rate_hz;
+   for (int native_rate_hz : AudioProcessing::kNativeSampleRatesHz) {
+     audio_frame->SetSampleRateAndChannelSize(native_rate_hz);
+     if (native_rate_hz >= min_processing_rate_hz) {
+@@ -147,7 +150,7 @@ int32_t AudioTransportImpl::RecordedDataIsAvailable(
+         estimated_capture_time_ns) {  // NOLINT: to avoid changing APIs
+   RTC_DCHECK(audio_data);
+   RTC_DCHECK_GE(number_of_channels, 1);
+-  RTC_DCHECK_LE(number_of_channels, 2);
++  RTC_DCHECK_LE(number_of_channels, 8); // allow up to 8 input channels, which will be remixed as appropriate to allow for complex devices (roxanneskelly)
+   RTC_DCHECK_EQ(2 * number_of_channels, bytes_per_sample);
+   RTC_DCHECK_GE(sample_rate, AudioProcessing::NativeRate::kSampleRate8kHz);
+   // 100 = 1 second / data duration (10 ms).

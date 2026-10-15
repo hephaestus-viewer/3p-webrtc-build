@@ -1,0 +1,75 @@
+diff --git a/modules/audio_device/audio_device_buffer.cc b/modules/audio_device/audio_device_buffer.cc
+index c27ba37..f5ee994 100644
+--- a/modules/audio_device/audio_device_buffer.cc
++++ b/modules/audio_device/audio_device_buffer.cc
+@@ -104,11 +104,14 @@ int32_t AudioDeviceBuffer::RegisterAudioCallback(
+     AudioTransport* audio_callback) {
+   RTC_DCHECK_RUN_ON(&main_thread_checker_);
+   RTC_DLOG(LS_INFO) << __FUNCTION__;
++  // webrtc-sdk/webrtc behaviour: allow replacing the transport while media is
++  // active. Second Life's llwebrtc starts the microphone before the voice
++  // engine registers its transport; refusing here left the first connection
++  // with no transport at all (silence in, stale audio out).
+   if (playing_ || recording_) {
+-    RTC_LOG(LS_ERROR) << "Failed to set audio transport since media was active";
+-    return -1;
++    RTC_LOG(LS_WARNING) << "Setting audio transport while media is active";
+   }
+-  audio_transport_cb_ = audio_callback;
++  audio_transport_cb_.store(audio_callback);
+   return 0;
+ }
+ 
+@@ -316,7 +319,8 @@ int32_t AudioDeviceBuffer::SetRecordedBuffer(
+ }
+ 
+ int32_t AudioDeviceBuffer::DeliverRecordedData() {
+-  if (!audio_transport_cb_) {
++  AudioTransport* const audio_transport = audio_transport_cb_.load();
++  if (!audio_transport) {
+     RTC_LOG(LS_WARNING) << "Invalid audio transport";
+     return 0;
+   }
+@@ -324,7 +328,7 @@ int32_t AudioDeviceBuffer::DeliverRecordedData() {
+   const size_t bytes_per_frame = rec_channels_ * sizeof(int16_t);
+   uint32_t new_mic_level_dummy = 0;
+   uint32_t total_delay_ms = play_delay_ms_ + rec_delay_ms_;
+-  int32_t res = audio_transport_cb_->RecordedDataIsAvailable(
++  int32_t res = audio_transport->RecordedDataIsAvailable(
+       rec_buffer_.data(), frames, bytes_per_frame, rec_channels_,
+       rec_sample_rate_, total_delay_ms, 0, 0, typing_status_,
+       new_mic_level_dummy, capture_timestamp_ns_);
+@@ -350,7 +354,8 @@ int32_t AudioDeviceBuffer::RequestPlayoutData(size_t samples_per_channel) {
+   size_t num_samples_out(0);
+   // It is currently supported to start playout without a valid audio
+   // transport object. Leads to warning and silence.
+-  if (!audio_transport_cb_) {
++  AudioTransport* const audio_transport = audio_transport_cb_.load();
++  if (!audio_transport) {
+     RTC_LOG(LS_WARNING) << "Invalid audio transport";
+     return 0;
+   }
+@@ -359,7 +364,7 @@ int32_t AudioDeviceBuffer::RequestPlayoutData(size_t samples_per_channel) {
+   int64_t elapsed_time_ms = -1;
+   int64_t ntp_time_ms = -1;
+   const size_t bytes_per_frame = play_channels_ * sizeof(int16_t);
+-  uint32_t res = audio_transport_cb_->NeedMorePlayData(
++  uint32_t res = audio_transport->NeedMorePlayData(
+       samples_per_channel, bytes_per_frame, play_channels_, play_sample_rate_,
+       play_buffer_.data(), num_samples_out, &elapsed_time_ms, &ntp_time_ms);
+   if (res != 0) {
+diff --git a/modules/audio_device/audio_device_buffer.h b/modules/audio_device/audio_device_buffer.h
+index 838ca80..5110ad7 100644
+--- a/modules/audio_device/audio_device_buffer.h
++++ b/modules/audio_device/audio_device_buffer.h
+@@ -171,7 +171,9 @@ class AudioDeviceBuffer {
+   // RegisterAudioCallback() but that will lead to ignored audio callbacks in
+   // both directions where native audio will be active but no audio samples will
+   // be transported.
+-  AudioTransport* audio_transport_cb_;
++  // As in webrtc-sdk/webrtc, it may also be replaced while media is active, so
++  // it is atomic: set on the main thread, read on the audio threads.
++  std::atomic<AudioTransport*> audio_transport_cb_;
+ 
+   // Sample rate in Hertz. Accessed atomically.
+   std::atomic<uint32_t> rec_sample_rate_;

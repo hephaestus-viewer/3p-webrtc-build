@@ -1,0 +1,16 @@
+diff --git a/modules/audio_device/win/core_audio_utility_win.cc b/modules/audio_device/win/core_audio_utility_win.cc
+index 38a6161..9d77ff1 100644
+--- a/modules/audio_device/win/core_audio_utility_win.cc
++++ b/modules/audio_device/win/core_audio_utility_win.cc
+@@ -902,9 +902,9 @@ HRESULT SetClientProperties(IAudioClient2* client) {
+   }
+   AudioClientProperties props = {0};
+   props.cbSize = sizeof(AudioClientProperties);
+-  // Real-time VoIP communication.
++  // (roxanneskelly): Don't duck other audio sources.  Use Media instead of Communication
+   // TODO(henrika): other categories?
+-  props.eCategory = AudioCategory_Communications;
++  props.eCategory = AudioCategory_Media;
+   // Hardware-offloaded audio processing allows the main audio processing tasks
+   // to be performed outside the computer's main CPU. Check support and log the
+   // result but hard-code `bIsOffload` to FALSE for now.
